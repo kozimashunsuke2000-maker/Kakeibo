@@ -1,6 +1,6 @@
 // Offline cache for the household ledger. The app shell is served from the cache first so it opens
 // instantly (and with no signal); a fresh copy is fetched in the background for the next launch.
-const CACHE = "kakeibo-v4";
+const CACHE = "kakeibo-v5";
 const FILES = ["./", "index.html", "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", event => {

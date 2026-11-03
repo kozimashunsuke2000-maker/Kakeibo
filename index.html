@@ -299,6 +299,19 @@ button { cursor: pointer; }
   // Columns the user removed stay out of view (their records are kept and can be brought back).
   const DEFAULT_RULES = [];
   const shown = () => CATS.filter(c => !(settings.hidden || []).includes(c));
+  // A removed column's records go to the visible column whose name contains its name
+  // (e.g. 雑費 → a column renamed 「娯楽・雑費」). Null when there is no such column.
+  const homeFor = c => {
+    if (!(settings.hidden || []).includes(c)) return c;
+    const base = c === "趣味" ? "娯楽" : c === "美容" ? "自己投資" : c;
+    return shown().find(k => label(k).includes(c) || label(k).includes(base)) || null;
+  };
+  function moveHiddenRecords() {
+    entries.filter(e => (settings.hidden || []).includes(e.cat)).forEach(e => {
+      const to = homeFor(e.cat);
+      if (to) store.put({ ...e, cat: to });
+    });
+  }
   const FIXED = "固定費";
   const COLORS = { "食費": "var(--c-food)", "趣味": "var(--c-hobby)", "雑費": "var(--c-misc)", "美容": "var(--c-beauty)", "固定費": "var(--c-fixed)" };
   const DEFAULT_TAKE_HOME = 0;
@@ -356,6 +369,7 @@ button { cursor: pointer; }
       if (d) { entries = d.entries || []; settings = { ...settings, ...d.settings }; if (!settings.budgets) settings.budgets = { ...DEFAULT_BUDGETS }; }
     } catch {}
     setBackend({ put: saveLocal, remove: saveLocal, saveSettings: saveLocal });
+    moveHiddenRecords();
     $("storeNote").textContent = note;
     render();
   }
@@ -788,8 +802,9 @@ button { cursor: pointer; }
     try { raw = decodeURIComponent(raw); } catch {}
     if (!raw.startsWith("q.")) return false;
     const [catPart = "", amtPart = "", tsPart = "", memoPart = ""] = raw.slice(2).split(".");
-    const cat = QUICK_CATS[catPart.trim()] || QUICK_CATS[catPart.trim().toLowerCase()]
+    const named = QUICK_CATS[catPart.trim()] || QUICK_CATS[catPart.trim().toLowerCase()]
       || (settings.names && Object.keys(settings.names).find(k => settings.names[k] === catPart.trim()));
+    const cat = named ? homeFor(named) : null;
     const amount = Number(amtPart.replace(/[^\d]/g, "")) || 0;
     const ts = /^\d{14}$/.test(tsPart) ? tsPart : null;
     const memo = /^[A-Za-z0-9_-]*$/.test(memoPart) ? decodeMemo(memoPart) : memoPart.trim().slice(0, 30);
