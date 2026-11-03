@@ -766,10 +766,16 @@ button { cursor: pointer; }
   }
   window.addEventListener("hashchange", () => { quickFromHash(); openFromHash(); });
 
-  // iPhone Shortcut quick entry: …#q.<food|hobby|misc|beauty>.<amount>.<yyyyMMddHHmmss>.<memo as base64url>
-  // The amount and memo are typed in the Shortcut; the page saves at once. The timestamp is the record id,
-  // so opening the same link again never adds a duplicate.
-  const QUICK = /^q\.(food|hobby|misc|beauty)\.(\d{1,8})\.(\d{14})(?:\.([A-Za-z0-9_-]*))?$/;
+  // iPhone Shortcut quick entry: …#q.<category>.<amount>.<yyyyMMddHHmmss>.<memo as base64url>
+  // The category may be food/hobby/misc/beauty or the menu name itself (食費・娯楽・雑費・自己投資…).
+  // A link that names no known category (or no amount) still opens the form filled in, so nothing is lost.
+  // The record id comes from the link, so opening the same link again never adds a duplicate.
+  const QUICK_CATS = {
+    food: "食費", "食費": "食費",
+    hobby: "趣味", "娯楽": "趣味", "趣味": "趣味",
+    misc: "雑費", "雑費": "雑費",
+    beauty: "美容", "美容": "美容", "自己投資": "美容", "美容自己投資": "美容", "美容 自己投資": "美容",
+  };
   function decodeMemo(b64) {
     if (!b64) return "";
     try {
@@ -778,12 +784,26 @@ button { cursor: pointer; }
     } catch { return ""; }
   }
   function quickFromHash() {
-    const m = (location.hash || "").slice(1).match(QUICK);
-    if (!m) return false;
-    const [, key, amt, ts, memoB64] = m;
-    const amount = Number(amt);
-    if (!amount) return false;
-    const e = { id: "s" + ts, cat: HASH_CATS[key], amount, date: `${ts.slice(0, 4)}-${ts.slice(4, 6)}-${ts.slice(6, 8)}`, memo: decodeMemo(memoB64) };
+    let raw = (location.hash || "").slice(1);
+    try { raw = decodeURIComponent(raw); } catch {}
+    if (!raw.startsWith("q.")) return false;
+    const [catPart = "", amtPart = "", tsPart = "", memoPart = ""] = raw.slice(2).split(".");
+    const cat = QUICK_CATS[catPart.trim()] || QUICK_CATS[catPart.trim().toLowerCase()]
+      || (settings.names && Object.keys(settings.names).find(k => settings.names[k] === catPart.trim()));
+    const amount = Number(amtPart.replace(/[^\d]/g, "")) || 0;
+    const ts = /^\d{14}$/.test(tsPart) ? tsPart : null;
+    const memo = /^[A-Za-z0-9_-]*$/.test(memoPart) ? decodeMemo(memoPart) : memoPart.trim().slice(0, 30);
+    if (!cat || !amount || !ts) {
+      // Something in the Shortcut is off: show the form with what arrived and let the user finish it.
+      openEntry(cat || CATS[0], null, true);
+      if (amount) $("fAmount").value = amount;
+      if (memo) $("fMemo").value = memo;
+      $("sheetMsg").textContent = !cat ? "カテゴリが届きませんでした。選んで保存してください" : "内容を確かめて保存してください";
+      return true;
+    }
+    let h = 0;
+    for (const ch of raw) h = (h * 31 + ch.codePointAt(0)) >>> 0;
+    const e = { id: "s" + ts + h.toString(36), cat, amount, date: `${ts.slice(0, 4)}-${ts.slice(4, 6)}-${ts.slice(6, 8)}`, memo };
     const what = `${label(e.cat)} ${yen(amount)}${e.memo ? "（" + e.memo + "）" : ""}`;
     const i = entries.findIndex(x => x.id === e.id);
     if (i >= 0) entries[i] = e; else entries.push(e);
@@ -792,6 +812,7 @@ button { cursor: pointer; }
     send(b => Promise.resolve(b.put(e)).then(() => toast(`✓ ${what} を記録しました`, 4000), () => {}));
     return true;
   }
+
 
   loadCache();
   render();
