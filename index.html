@@ -376,6 +376,7 @@ button { cursor: pointer; }
     moveHiddenRecords();
     $("storeNote").textContent = note;
     render();
+    runQuick();
   }
   // ---------- render ----------
   const monthKey = () => `${view.y}-${pad(view.m + 1)}`;
@@ -794,6 +795,12 @@ button { cursor: pointer; }
     misc: "雑費", "雑費": "雑費",
     beauty: "美容", "美容": "美容", "自己投資": "美容", "美容自己投資": "美容", "美容 自己投資": "美容",
   };
+  // Romaji / English words a Shortcut can send instead of Japanese column names.
+  const QUICK_WORDS = {
+    food: "食費", shokuhi: "食費", hobby: "娯楽", goraku: "娯楽", misc: "雑費", zappi: "雑費",
+    beauty: "自己投資", jiko: "自己投資", jikotoshi: "自己投資", biyou: "美容",
+    keihi: "経費", expense: "経費", expenses: "経費",
+  };
   function decodeMemo(b64) {
     if (!b64) return "";
     try {
@@ -806,9 +813,11 @@ button { cursor: pointer; }
     try { raw = decodeURIComponent(raw); } catch {}
     if (!raw.startsWith("q.")) return false;
     const [catPart = "", amtPart = "", tsPart = "", memoPart = ""] = raw.slice(2).split(".");
-    const named = QUICK_CATS[catPart.trim()] || QUICK_CATS[catPart.trim().toLowerCase()]
-      || (settings.names && Object.keys(settings.names).find(k => settings.names[k] === catPart.trim()));
-    const cat = named ? homeFor(named) : null;
+    // First by the column's current name (e.g. 「経費」, or keihi), then by the built-in keys.
+    const word = QUICK_WORDS[catPart.trim().toLowerCase()] || catPart.trim();
+    const byName = word ? [...shown(), FIXED].find(k => label(k) === word) || shown().find(k => label(k).includes(word)) : null;
+    const named = QUICK_CATS[catPart.trim()] || QUICK_CATS[catPart.trim().toLowerCase()];
+    const cat = byName && byName !== FIXED ? byName : named ? homeFor(named) : null;
     const amount = Number(amtPart.replace(/[^\d]/g, "")) || 0;
     const ts = /^\d{14}$/.test(tsPart) ? tsPart : null;
     const memo = /^[A-Za-z0-9_-]*$/.test(memoPart) ? decodeMemo(memoPart) : memoPart.trim().slice(0, 30);
@@ -835,7 +844,10 @@ button { cursor: pointer; }
 
   loadCache();
   render();
-  if (!quickFromHash()) openFromHash();
+  // A Shortcut link waits for the saved settings (column names) before it is read; 6 s at most.
+  let quickPending = (location.hash || "").startsWith("#q.");
+  const runQuick = () => { if (quickPending) { quickPending = false; quickFromHash(); } };
+  if (quickPending) setTimeout(runQuick, 6000); else openFromHash();
   useLocal("");
 
   // ---------- backup (data lives only on this phone) ----------
