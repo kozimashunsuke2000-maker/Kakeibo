@@ -306,10 +306,14 @@ button { cursor: pointer; }
     const base = c === "趣味" ? "娯楽" : c === "美容" ? "自己投資" : c;
     return shown().find(k => label(k).includes(c) || label(k).includes(base)) || null;
   };
+  // Each record is moved at most once per page load, so a slow or refused save can never loop.
+  const moved = new Set();
   function moveHiddenRecords() {
-    entries.filter(e => (settings.hidden || []).includes(e.cat)).forEach(e => {
+    entries.filter(e => (settings.hidden || []).includes(e.cat) && !moved.has(e.id)).forEach(e => {
       const to = homeFor(e.cat);
-      if (to) store.put({ ...e, cat: to });
+      if (!to) return;
+      moved.add(e.id);
+      store.put({ ...e, cat: to });
     });
   }
   const FIXED = "固定費";
